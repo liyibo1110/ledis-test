@@ -7,7 +7,9 @@
 #define DICT_HT_INITIAL_SIZE 4
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 typedef struct dictEntry{
     void *key;
@@ -29,7 +31,7 @@ typedef struct dictType{
     //对比key的函数
     int (*keyCompare)(void *privdata, const void *key1, const void *key2);
     //销毁键的函数
-    void (*keyDestructor)(void *privdate, const void *key);
+    void (*keyDestructor)(void *privdata, const void *key);
     //销毁值的函数
     void (*valDestructor)(void *privdata, const void *obj);
 } dictType;
@@ -70,4 +72,64 @@ typedef struct dictIterator{
     long long fingerprint;
 } dictIterator;
 
+//将有符号整数设为指定entry的值
+#define dictSetSignedIntegerVal(entry, val) \
+    do {entry->v.s64 = (val);} while(0)
+//将无符号整数设为指定entry的值
+#define dictSetUnSignedIntegerVal(entry, val) \
+    do {entry->v.u64 = (val);} while(0)
+//对比2个key
+#define dictCompareKeys(d, key1, key2) \
+    ((d)->type->keyCompare) ? (d)->type->keyCompare((d)->type->privdata, key1, key2) : (key1 == key2)
+//释放指定字典中entry的key
+#define dictFreeKey(d, entry) do{ \
+    if((d)->type->keyDestructor){  \
+        (d)->type->keyDestructor((d)->type->privdata, entry->key);   \
+    }  \
+} while(0) 
+//设定指定字典中entry的key
+#define dictSetKey(d, entry, k) do{ \
+    if((d)->type->keyDup){  \
+        entry->key = (d)->type->keyDup((d)->type->privdata, (k));   \
+    }else{  \
+        entry->key = (k);   \
+    }   \
+} while(0)   
+//释放指定字典中entry的value
+#define dictFreeValue(d, entry) do{ \
+    if((d)->type->valDestructor){  \
+        (d)->type->valDestructor((d)->type->privdata, entry->v.val);   \
+    }  \
+} while(0) 
+//设定指定字典中entry的value
+#define dictSetValue(d, entry, v) do{ \
+    if((d)->type->valDup){  \
+        entry->key = (d)->type->valDup((d)->type->privdata, (v));   \
+    }else{  \
+        entry->key = (v);   \
+    }   \
+} while(0) 
+
+//计算给定key的hash值
+#define dictHashKey(d, key) (d)->type->hashFunction(key)
+//返回给定entry的key
+#define dictGetKey(entry) ((entry)->key)
+//返回给定entry的节点值
+#define dictGetVal(entry) ((entry)->val)
+//返回给定entry的有符号整数值
+#define dictGetSignedIntegerVal(entry) ((entry)->v.s64)
+//返回给定entry的无符号整数值
+#define dictGetUnsignedIntegerVal(entry) ((entry)->v.u64)
+//返回给定字典大小，注意是2个hash表的和
+#define dictSlots(d) ((d)->ht[0].size + (d)->ht[1].size)
+//返回给定字典已有节点数量，注意是2个hash表的和
+#define dictSize(d) ((d)->ht[0].used + (d)->ht[1].used)
+//查看字典是否正在rehash，源码中的参数却叫ht
+#define dictIsRehashing(d) ((d)->rehashindex != -1)
+
 dict *dictCreate(dictType *type, void *privdata);
+
+int dictRehash(dict *d, int n);
+
+void dictEnableResize(void);
+void dictDisableResize(void);
