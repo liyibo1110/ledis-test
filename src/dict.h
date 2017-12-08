@@ -7,9 +7,11 @@
 #define DICT_HT_INITIAL_SIZE 4
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <sys/time.h>
 
 typedef struct dictEntry{
     void *key;
@@ -25,9 +27,9 @@ typedef struct dictType{
     //计算hash的函数
     size_t (*hashFunction)(const void *key);
     //复制key的函数
-    void *(*keyDup)(const void *key);
+    void *(*keyDup)(void *privdata, const void *key);
     //复制val的函数
-    void *(*valDup)(const void *obj);
+    void *(*valDup)(void *privdata, const void *obj);
     //对比key的函数
     int (*keyCompare)(void *privdata, const void *key1, const void *key2);
     //销毁键的函数
@@ -80,33 +82,33 @@ typedef struct dictIterator{
     do {entry->v.u64 = (val);} while(0)
 //对比2个key
 #define dictCompareKeys(d, key1, key2) \
-    ((d)->type->keyCompare) ? (d)->type->keyCompare((d)->type->privdata, key1, key2) : (key1 == key2)
+    ((d)->type->keyCompare) ? (d)->type->keyCompare((d)->privdata, key1, key2) : (key1 == key2)
 //释放指定字典中entry的key
 #define dictFreeKey(d, entry) do{ \
     if((d)->type->keyDestructor){  \
-        (d)->type->keyDestructor((d)->type->privdata, entry->key);   \
+        (d)->type->keyDestructor((d)->privdata, entry->key);   \
     }  \
 } while(0) 
 //设定指定字典中entry的key
-#define dictSetKey(d, entry, k) do{ \
+#define dictSetKey(d, entry, _k) do{ \
     if((d)->type->keyDup){  \
-        entry->key = (d)->type->keyDup((d)->type->privdata, (k));   \
+        entry->key = (d)->type->keyDup((d)->privdata, (_k));   \
     }else{  \
-        entry->key = (k);   \
-    }   \
+        entry->key = (_k);  \
+    }       \
 } while(0)   
 //释放指定字典中entry的value
-#define dictFreeValue(d, entry) do{ \
+#define dictFreeVal(d, entry) do{ \
     if((d)->type->valDestructor){  \
-        (d)->type->valDestructor((d)->type->privdata, entry->v.val);   \
+        (d)->type->valDestructor((d)->privdata, entry->v.val);   \
     }  \
 } while(0) 
 //设定指定字典中entry的value
-#define dictSetValue(d, entry, v) do{ \
+#define dictSetVal(d, entry, _v) do{ \
     if((d)->type->valDup){  \
-        entry->key = (d)->type->valDup((d)->type->privdata, (v));   \
+        entry->v.val = (d)->type->valDup((d)->privdata, (_v));   \
     }else{  \
-        entry->key = (v);   \
+        entry->v.val = (_v);   \
     }   \
 } while(0) 
 
@@ -115,7 +117,7 @@ typedef struct dictIterator{
 //返回给定entry的key
 #define dictGetKey(entry) ((entry)->key)
 //返回给定entry的节点值
-#define dictGetVal(entry) ((entry)->val)
+#define dictGetVal(entry) ((entry)->v.val)
 //返回给定entry的有符号整数值
 #define dictGetSignedIntegerVal(entry) ((entry)->v.s64)
 //返回给定entry的无符号整数值
@@ -128,8 +130,16 @@ typedef struct dictIterator{
 #define dictIsRehashing(d) ((d)->rehashindex != -1)
 
 dict *dictCreate(dictType *type, void *privdata);
+void dictRelease(dict *d);
+int dictResize(dict *d);
+int dictExpand(dict *d, size_t size);
+int dictAdd(dict *d, void *key, void *val);
+int dictReplace(dict *d, void *key, void *val);
+dictEntry *dictAddRaw(dict *d, void *key);
+dictEntry *dictFind(dict *d, void *key);
 
 int dictRehash(dict *d, int n);
+int dictRehashMilliseconds(dict *d, int ms);
 
 void dictEnableResize(void);
 void dictDisableResize(void);
