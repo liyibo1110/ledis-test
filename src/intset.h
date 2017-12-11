@@ -8,4 +8,5 @@ typedef struct intset{
     int8_t contents[];
 } intset;
 
-intset *intsetAdd(void);
+intset *intsetNew(void);
+intset *intsetAdd(intset *is, int64_t value, int8_t *success);
