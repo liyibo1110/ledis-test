@@ -17,6 +17,7 @@ static int _dictExpandIfNeeded(dict *d);
 static size_t _dictNextPower(size_t size);
 static void _dictRehashStep(dict *d);
 static int _dictClear(dict *d, dictht *ht, void(callback)(void *));
+static int dictGenericDelete(dict *d, const void *key, int nofree);
 /**
  * 重置指定hash表的各项属性
  */
@@ -176,6 +177,68 @@ static int _dictClear(dict *d, dictht *ht, void(callback)(void *)){
     //最后重置这个hash表的其他字段值
     _dictReset(ht);
     return DICT_OK;
+}
+
+/**
+ * 查找并删除字典中给定key的entry
+ * nofree为0表示调用key和value的free函数，否则就不调用
+ */ 
+static int dictGenericDelete(dict *d, const void *key, int nofree){
+    
+    //hash表如果为空，直接返回ERR
+    if(d->ht[0].size == 0){
+        return DICT_ERR;
+    }
+
+    //执行单步rehash
+    if(dictIsRehashing(d)){
+        _dictRehashStep(d);
+    }
+
+    //计算hash值
+    unsigned int hash = dictHashKey(d, key);
+    dictEntry *entry, *prevEntry;
+    for (int i = 0; i <= 1; i++){
+        //返回桶索引值
+        unsigned int index = hash & d->ht[i].sizemask;
+        entry = d->ht[i].table[index];
+        while(entry){
+            if(dictCompareKeys(d, entry->key, key)){
+                if(prevEntry){  //如果prevEntry不为NULL，说明是中间或最后一个元素
+                    //直接修改前一个元素next，指向本元素的next，相当于去掉自身元素
+                    prevEntry->next = entry->next;
+                }else{  //如果prevEntry为NULL，说明这次是首元素
+                    //直接修改桶的第一个指向，直接指向本元素的next
+                    d->ht[i].table[index] = entry->next;
+                }
+                if(!nofree){    //释放key和value
+                    dictFreeKey(d, entry);
+                    dictFreeVal(d, entry);
+                }
+                //释放当前entry，used减一
+                free(entry);
+                d->ht[i].used--;
+                return DICT_OK;
+            }
+            //没找到还要暂存前一个节点和当前节点
+            prevEntry = entry;
+            entry = entry->next;
+        }
+        if(!dictIsRehashing(d)){    //如果没有在rehash，也就不用再扫描1号表了
+            break;
+        }
+    }
+
+    return DICT_ERR;
+}
+
+
+int dictDelete(dict *d, const void *key){
+    return dictGenericDelete(d, key, 0);
+}
+
+int dictNoFreeDelete(dict *d, const void *key){
+    return dictGenericDelete(d, key, 1);
 }
 
 /**
@@ -357,6 +420,18 @@ dictEntry *dictFind(dict *d, void *key){
 }
 
 /**
+ * 根据给定的key，从字典中查找相应的value并返回，否则返回NULL
+ */ 
+void *dictFetchValue(dict *d, void *key){
+    dictEntry *entry = dictFind(d, key);
+    if(!entry){
+        return NULL;
+    }else{
+        return dictGetVal(entry);
+    }
+}
+
+/**
  *  执行N步渐进式rehash
  *  返回1表示只移动了一部分hash内容过去
  *  返回0表示全部移动完毕
@@ -415,6 +490,123 @@ int dictRehash(dict *d, int n){
     }
     return 0;
 }
+
+/**
+ *  返回一个给定字典的不安全迭代器 
+ */
+dictIterator *dictGetIterator(dict *d){
+    dictIterator *iter = malloc(sizeof(*iter));
+    iter->d = d;
+    iter->table = 0;
+    iter->index = -1;   //注意是-1，而不是0
+    iter->entry = NULL;
+    iter->nextEntry = NULL;
+    return iter;
+}
+
+/**
+ * 返回一个给定字典的安全迭代器
+ */ 
+dictIterator *dictGetSafeIterator(dict *d){
+    dictIterator *iter = dictGetIterator(d);
+    iter->safe = 1; //只修改safe字段为1
+    return iter;
+}
+
+/* A fingerprint is a 64 bit number that represents the state of the dictionary
+ * at a given time, it's just a few dict properties xored together.
+ * When an unsafe iterator is initialized, we get the dict fingerprint, and check
+ * the fingerprint again when the iterator is released.
+ * If the two fingerprints are different it means that the user of the iterator
+ * performed forbidden operations against the dictionary while iterating. */
+long long dictFingerprint(dict *d) {
+    long long integers[6], hash = 0;
+    int j;
+
+    integers[0] = (long) d->ht[0].table;
+    integers[1] = d->ht[0].size;
+    integers[2] = d->ht[0].used;
+    integers[3] = (long) d->ht[1].table;
+    integers[4] = d->ht[1].size;
+    integers[5] = d->ht[1].used;
+
+    /* We hash N integers by summing every successive integer with the integer
+     * hashing of the previous sum. Basically:
+     *
+     * Result = hash(hash(hash(int1)+int2)+int3) ...
+     *
+     * This way the same set of integers in a different order will (likely) hash
+     * to a different number. */
+    for (j = 0; j < 6; j++) {
+        hash += integers[j];
+        /* For the hashing step we use Tomas Wang's 64 bit integer hash. */
+        hash = (~hash) + (hash << 21); // hash = (hash << 21) - hash - 1;
+        hash = hash ^ (hash >> 24);
+        hash = (hash + (hash << 3)) + (hash << 8); // hash * 265
+        hash = hash ^ (hash >> 14);
+        hash = (hash + (hash << 2)) + (hash << 4); // hash * 21
+        hash = hash ^ (hash >> 28);
+        hash = hash + (hash << 31);
+    }
+    return hash;
+}
+
+void dictReleaseIterator(dictIterator *iter){
+    //如果迭代器已在迭代中，则要做处理，才能free
+    if(!(iter->index == -1 && iter->table == 0)){
+        if(iter->safe){
+            iter->d->iterators--;
+        }else{
+            assert(iter->fingerprint == dictFingerprint(iter->d));
+        }
+    }
+    free(iter);
+}
+
+/**
+ * 返回迭代器当前指向的节点，迭代完成后会返回NULL
+ */ 
+dictEntry *dictNext(dictIterator *iter){
+    while(1){   //无限循环，里面用break退出
+        if(iter->entry==NULL){  //2种可能进入这里，迭代器首次运行，或者已全部迭代完
+            dictht *ht = &(iter->d->ht[iter->table]);
+            //如果是首次迭代，则需要执行
+            if(iter->index == -1 && iter->table == 0){
+                if(iter->safe){ //如果是安全迭代器，直接计数加1
+                    iter->d->iterators++;
+                }else{  //如果不是安全迭代器，则计算指纹，这个没看明白
+                    iter->fingerprint = dictFingerprint(iter->d);
+                }
+            }
+            //迭代器索引在这里加1
+            iter->index++;
+            if(iter->index >= ht->size){    //如果index大于等于hash表的size，说明已经迭代完事了
+                if(dictIsRehashing(iter->d) && iter->table == 0){
+                    iter->table++;
+                    iter->index = 0;
+                    ht = &(iter->d->ht[1]);
+                }else{  //如果没有rehash，直接break结束
+                    break;
+                }
+            }
+
+            //到这里，说明迭代器还未迭代完成
+            iter->entry = ht->table[iter->index];
+        }else{
+            //当前entry存在，需要返回下一个节点
+            iter->entry = iter->nextEntry;
+        }
+
+        if(iter->entry){
+            iter->nextEntry = iter->entry->next;
+            return iter->entry;
+        }
+    }
+    return NULL;
+}
+
+//剩余dictScan函数未完成
+
 
 /**
  * 类似Java的System.currentTimeMillis()方法，返回当前时间戳

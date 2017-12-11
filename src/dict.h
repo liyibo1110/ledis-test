@@ -62,7 +62,7 @@ typedef struct dict{
 } dict;
 
 typedef struct dictIterator{
-    dict *dict;
+    dict *d;
     /*
      *  table : 正在被迭代的ht表，要么0要么1
      *  index : 迭代器目前正指向的hash表索引位置
@@ -137,9 +137,17 @@ int dictAdd(dict *d, void *key, void *val);
 int dictReplace(dict *d, void *key, void *val);
 dictEntry *dictAddRaw(dict *d, void *key);
 dictEntry *dictFind(dict *d, void *key);
+void *dictFetchValue(dict *d, void *key);
+int dictDelete(dict *d, const void *key);
+int dictNoFreeDelete(dict *d, const void *key);
 
 int dictRehash(dict *d, int n);
 int dictRehashMilliseconds(dict *d, int ms);
+
+dictIterator *dictGetIterator(dict *d);
+dictIterator *dictGetSafeIterator(dict *d);
+void dictReleaseIterator(dictIterator *iter);
+dictEntry *dictNext(dictIterator *iter);
 
 void dictEnableResize(void);
 void dictDisableResize(void);
