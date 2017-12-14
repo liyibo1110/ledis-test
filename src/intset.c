@@ -69,7 +69,84 @@ static void _intsetSet(intset *is, uint32_t pos, int64_t value){
  * 找不到则返回0，并将pos设为要insert的位置
  */ 
 static uint8_t intsetSearch(intset *is, int64_t value, uint32_t *pos){
+    
+    //如果intset为空，则直接将pos置为首尾
+    if(is->length == 0){
+        if(pos){
+            *pos = 0;
+        }
+        return 1;
+    }else{
+        if(value > _intsetGet(is, is->length-1)){
+            if(pos){
+                *pos = is->length;
+            }
+            return 1;
+        }else if(value < _intsetGet(is, 0)){
+            if(pos){
+                *pos = 0;
+            }
+            return 1;
+        }
+    }
 
+    int min = 0;
+    int max = is->length - 1;
+    int mid = -1;
+    int64_t current = -1;
+
+    //到这里说既不为空，又不是在首尾，需要进行二分查找（非递归版本）
+    while(max>=min){
+        mid = (max + min) / 2;
+        current = _intsetGet(is, mid);
+        if(current > value){    //中值比value还要大，则value属于左半侧
+            max = mid - 1;
+        }else if(current < value){  //中值比value还要小，则value属于右半侧
+            min = mid + 1;
+        }else{
+            break;
+        }
+    }
+
+    //已经出来了，要么current正好就是value，要么就是压根就没有
+    if(current == value){
+        if(pos){
+            *pos = mid; //跳出来后的mid就是最后的位置
+        }
+        return 1;
+    }else{
+        if(pos){
+            *pos = min; //跳出来后的min就是要insert的位置
+        }
+        return 0;
+    }
+}
+
+/**
+ * 根据value的encoding，先将intset升级到相应的encoding
+ * 然后再将value新增进去
+ */ 
+static intset *intsetUpgradeAndAdd(intset *is, int64_t value){
+    uint32_t encoding = is->encoding;   //记录旧的encoding
+    uint8_t valueEncoding = _intsetValueEncoding(value);
+    int length = is->length;    //记录旧intset的长度
+    int prepend = value < 0 ? 1 : 0;
+    is->encoding = valueEncoding;   //重要，必须先修改intset的encoding
+    is = intsetResize(is, length + 1);  //改变了encoding，resize后结构发生了大变化
+    //开始移动元素，机制有点复杂
+    while(length--){
+        //注意最后传入的encoding是旧的
+        //根据prepend的不同，决定是把最后空位留出来，还是首位空位留出来
+        _intsetSet(is, length + prepend, _intsetGetEncoding(is, length, encoding));
+    }
+    if(prepend){    //写到首位
+        _intsetSet(is, 0, value);
+    }else{
+        _intsetSet(is, is->length, value);
+    }
+    //长度+1
+    is->length++;
+    return is;
 }
 
 /**
@@ -98,6 +175,7 @@ intset *intsetAdd(intset *is, int64_t value, int8_t *success){
 
     if(encoding > is->encoding){
         //如果新值的encoding大于原整数集合的encoding，则先将intset升级（写value也由这个函数负责）
+        return intsetUpgradeAndAdd(is, value);
     }else{  //否则说明新值的编码符合原有的
         //根据value查找是否值已存在，同时在内部更新pos变量的值
         if(intsetSearch(is, value, &pos)){
