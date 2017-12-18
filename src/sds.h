@@ -5,6 +5,11 @@
 #include <string.h>
 #include <ctype.h>
 
+/**
+ * 给自定义字符串对象起个类型别名
+ */ 
+typedef char *sds;
+
 struct sdshdr{
     //记录buf数组中已经使用的字节数量
     int len;
@@ -14,25 +19,27 @@ struct sdshdr{
     char buf[];
 };
 
-char *sdsnew(const char *init);
-char *sdsnewlen(const char *init, size_t initlen);
-void sdsfree(char *buf);
-char *sdsempty(void);
-size_t sdslen(const char *buf);
-size_t sdsavail(const char *buf);
-char *sdsdup(const char *buf);
-void sdsclear(char *buf);
-char *sdscat(char *buf, const char *t);
-char *sdscatlen(char *buf, const char *t, size_t len);
-char *sdscpy(char *buf, const char *t);
-char *sdscpylen(char *buf, const char *t, size_t len);
-int sdscmp(const char *buf1, const char *buf2);
-char *sdstrim(char *buf, const char *cset);
-void sdsrange(char *buf, int start, int end);
-void sdstolower(char *buf);
-void sdstoupper(char *buf);
-size_t sdsAllocSize(char *buf);
+sds sdsnew(const char *init);
+sds sdsnewlen(const void *init, size_t initlen);
+void sdsfree(sds s);
+sds sdsempty(void);
+size_t sdslen(const sds s);
+size_t sdsavail(const sds s);
+sds sdsdup(const sds s);
+void sdsclear(sds s);
+sds sdscat(sds s, const char *t);
+sds sdscatlen(sds s, const void *t, size_t len);
+sds sdscpy(sds s, const char *t);
+sds sdscpylen(sds s, const char *t, size_t len);
+int sdscmp(const sds s1, const sds s2);
+sds sdstrim(sds s, const char *cset);
+void sdsrange(sds s, int start, int end);
+void sdstolower(sds s);
+void sdstoupper(sds s);
+size_t sdsAllocSize(sds s);
+
+sds sdsfromlonglong(long long value);
 
 //**************底层API***************************//
-char *sdsMakeRoom(char *buf, size_t addlen);
-char *sdsRemoveFreeSpace(char *buf);
+sds sdsMakeRoom(sds s, size_t addlen);
+sds sdsRemoveFreeSpace(sds s);

@@ -3,7 +3,7 @@
 /*
  *  返回新的buf值（并不返回sdshdr整个对象）
  */
-char *sdsnew(const char *init){
+sds sdsnew(const char *init){
     if(init != NULL){
         return sdsnewlen(init, strlen(init));
     }else{
@@ -11,7 +11,7 @@ char *sdsnew(const char *init){
     }
 }
 
-char *sdsnewlen(const char *init, size_t initlen){
+sds sdsnewlen(const void *init, size_t initlen){
 
     struct sdshdr *sh;
 
@@ -49,96 +49,98 @@ char *sdsnewlen(const char *init, size_t initlen){
 /*
  *  创建一个只有空字符串的sds
  */
-char *sdsempty(void){
+sds sdsempty(void){
     return sdsnewlen("", 0);
 }
 
-void sdsfree(char *buf){
-    if(buf == NULL){
+void sdsfree(sds s){
+    if(s == NULL){
         return;
     }
-    free(buf - sizeof(struct sdshdr));
+    free(s - sizeof(struct sdshdr));
 }
 
-size_t sdslen(const char *buf){
+size_t sdslen(const sds s){
     //传入的是里面字符串的指针，可以通过减去结构体本身长度，返回字符串所属结构体的指针
-    struct sdshdr *sh = (void*)(buf - (sizeof(struct sdshdr)));
+    struct sdshdr *sh = (void*)(s - (sizeof(struct sdshdr)));
     return sh->len;
 }
 
-size_t sdsavail(const char *buf){
+size_t sdsavail(const sds s){
     //传入的是里面字符串的指针，可以通过减去结构体本身长度，返回字符串所属结构体的指针
-    struct sdshdr *sh = (void*)(buf - (sizeof(struct sdshdr)));
+    struct sdshdr *sh = (void*)(s - (sizeof(struct sdshdr)));
     return sh->free;
 }
 
-char *sdsdup(const char *buf){
-    return sdsnewlen(buf, strlen(buf));
+sds sdsdup(const sds s){
+    return sdsnewlen(s, strlen(s));
 }
 
-void sdsclear(char *buf){
+void sdsclear(sds s){
     //惰性清空，只是修改free和len的值，然后第一位增加结束符即可，不清空每个字节
-    struct sdshdr *sh = (void*)(buf - (sizeof(struct sdshdr)));
+    struct sdshdr *sh = (void*)(s - (sizeof(struct sdshdr)));
     sh->free = (sh->free - sh->len);
     sh->len = 0;
     sh->buf[0] = '\0';
 }
 
-char *sdscat(char *buf, const char *t){
-    return sdscatlen(buf, t, strlen(t));
+sds sdscat(sds s, const char *t){
+    return sdscatlen(s, t, strlen(t));
 }
-char *sdscatlen(char *buf, const char *t, size_t len){
+
+sds sdscatlen(sds s, const void *t, size_t len){
     struct sdshdr *sh;
 
     //暂存旧的len值
-    size_t oldlen = sdslen(buf);
+    size_t oldlen = sdslen(s);
 
-    buf = sdsMakeRoom(buf, len);
+    s = sdsMakeRoom(s, len);
 
-    if(buf == NULL){
+    if(s == NULL){
         return NULL;
     }
 
     //这里sh已经是新的了，free值也是扩展后的
-    sh = (void*)(buf - (sizeof(struct sdshdr)));
+    sh = (void*)(s - (sizeof(struct sdshdr)));
 
     //复制新字符串到最后
-    memcpy(buf + oldlen, t, len);
+    memcpy(s + oldlen, t, len);
     sh->len = oldlen + len;
     sh->free = sh->free - len;
     sh->buf[oldlen + len] = '\0';
 
-    return buf;
+    return s;
 }
 
-char *sdscpy(char *buf, const char *t){
-    return sdscpylen(buf, t, strlen(t));
+sds sdscpy(sds s, const char *t){
+    return sdscpylen(s, t, strlen(t));
 }
-char *sdscpylen(char *buf, const char *t, size_t len){
-   struct sdshdr *sh = (void*)(buf - (sizeof(struct sdshdr)));
+
+sds sdscpylen(sds s, const char *t, size_t len){
+   struct sdshdr *sh = (void*)(s - (sizeof(struct sdshdr)));
 
    //获取原来的总长度
    size_t totallen = (sh->free + sh->len);
 
    //总长度都没有新内容大，则需要扩展
    if(totallen < len){
-       buf = sdsMakeRoom(buf, (len-sh->len));
-       if(buf == NULL){
+       s = sdsMakeRoom(s, (len-sh->len));
+       if(s == NULL){
            return NULL;
        }
-       //用新的buf获取新的sh，算出新的总长度
-       sh = (void*)(buf - (sizeof(struct sdshdr)));
+       //用新的sds获取新的sh，算出新的总长度
+       sh = (void*)(s - (sizeof(struct sdshdr)));
        totallen = (sh->free + sh->len);
    }
 
    //复制内容，直接覆盖
-   memcpy(buf, t, len);
+   memcpy(s, t, len);
 
    //sdsMakeRoom只是返回了buf，并没有重设len和free字段，最后还要单独设置
-   buf[len] = '\0';
+   s[len] = '\0';
    sh->len = len;
    sh->free = totallen - len;
-   return buf;
+   return s;
 }
 
 /*
@@ -147,25 +149,25 @@ char *sdscpylen(char *buf, const char *t, size_t len){
  * buf1 < buf2 返回-1
  * buf1 == buf2 返回0
  */
-int sdscmp(const char *buf1, const char *buf2){
+int sdscmp(const sds s1, const sds s2){
     size_t len1, len2, minlen;
-    len1 = sdslen(buf1);
-    len2 = sdslen(buf2);
+    len1 = sdslen(s1);
+    len2 = sdslen(s2);
     minlen = (len1 < len2) ? len1 : len2;
-    return memcmp(buf1, buf2, minlen);
+    return memcmp(s1, s2, minlen);
 }
 
 /*
  * 去掉前后cset出现过的字符
  */
-char *sdstrim(char *buf, const char *cset){
-    struct sdshdr *sh = (void*)(buf - (sizeof(struct sdshdr)));
+sds sdstrim(sds s, const char *cset){
+    struct sdshdr *sh = (void*)(s - (sizeof(struct sdshdr)));
     char *start, *end, *sp, *ep;    //前两个不变，后两个会变
     
-    sp = buf;
-    start = buf;
-    ep = buf + sdslen(buf) - 1; //不要最后那个\0
-    end = buf + sdslen(buf) - 1;
+    sp = s;
+    start = s;
+    ep = s + sdslen(s) - 1; //不要最后那个\0
+    end = s + sdslen(s) - 1;
 
     //修剪完只有sp和ep的指向发生了变化
     while(sp <= end && strchr(cset, *sp)){
@@ -196,9 +198,9 @@ char *sdstrim(char *buf, const char *cset){
  * 索引可以为负数
  * 直接修改buf自身
  */
-void sdsrange(char *buf, int start, int end){
-    struct sdshdr *sh = (void*)(buf - (sizeof(struct sdshdr)));
-    size_t len = sdslen(buf);
+void sdsrange(sds s, int start, int end){
+    struct sdshdr *sh = (void*)(s - (sizeof(struct sdshdr)));
+    size_t len = sdslen(s);
     if(len == 0){
         return;
     }
@@ -243,20 +245,20 @@ void sdsrange(char *buf, int start, int end){
 /*
  * 将buf里面的字符串全部变成小写
  */
-void sdstolower(char *buf){
-    int len = sdslen(buf);
+void sdstolower(sds s){
+    int len = sdslen(s);
     for (int i=0; i < len; i++){
-        buf[i] = tolower(buf[i]);
+        s[i] = tolower(s[i]);
     }
 }
 
 /*
  * 将buf里面的字符串全部变成大写
  */
-void sdstoupper(char *buf){
-    int len = sdslen(buf);
+void sdstoupper(sds s){
+    int len = sdslen(s);
     for (int i=0; i < len; i++){
-        buf[i] = toupper(buf[i]);
+        s[i] = toupper(s[i]);
     }
 }
 
@@ -267,22 +269,22 @@ void sdstoupper(char *buf){
  * 3.剩余的长度（free）
  * 4.结束符长度（1）
  */
-size_t sdsAllocSize(char *buf){
-    struct sdshdr *sh = (void*)(buf - (sizeof(struct sdshdr)));
+size_t sdsAllocSize(sds s){
+    struct sdshdr *sh = (void*)(s - (sizeof(struct sdshdr)));
     return (sizeof(*sh)) + sh->len + sh->free + 1;
 }
 
-char *sdsMakeRoom(char *buf, size_t addlen){
+char *sdsMakeRoom(sds s, size_t addlen){
     
-    struct sdshdr *sh = (void*)(buf - (sizeof(struct sdshdr)));
+    struct sdshdr *sh = (void*)(s - (sizeof(struct sdshdr)));
     struct sdshdr *newsh;
-    size_t free = sdsavail(buf);
-    size_t len = sdslen(buf);
+    size_t free = sdsavail(s);
+    size_t len = sdslen(s);
     size_t newlen = (len + addlen); //合并后正好的长度
 
     //如果剩余空间大于新的长度，则直接返回不扩展
     if(free >= addlen){
-        return buf;
+        return s;
     }
 
     //最终长度如果小于1M，直接翻倍扩容，否则最多只增加1M空间
@@ -302,24 +304,27 @@ char *sdsMakeRoom(char *buf, size_t addlen){
     return newsh->buf;
 }
 
-char *sdsRemoveFreeSpace(char *buf){
-    struct sdshdr *sh = (void*)(buf - (sizeof(struct sdshdr)));
+char *sdsRemoveFreeSpace(sds s){
+    struct sdshdr *sh = (void*)(s - (sizeof(struct sdshdr)));
     sh = realloc(sh, sizeof(struct sdshdr) + sh->len + 1);
     sh->free = 0;
 }
 
+#define SDS_LLSTR_SIZE 21
+/**
+ *  根据一个long long的值，转换成字符串，再封装成sdshdr对象 
+ *  没有使用原版复杂的转换方法
+ */
+sds sdsfromlonglong(long long value){
+    char buf[SDS_LLSTR_SIZE];
+    int len = sprintf(buf, "%lld", value);
+    return sdsnewlen(buf, len);
+}
+
 int main(){
-    //char* v1 = sdsnew("hello");
-    //size_t len1 = sdslen(v1);
-    //printf("%lu", len1);
-
-    /* const char *ch = "hello";
-    char *ch2 = "world";
-    ch = ch2;
-    printf("%s", ch); */
-
-    
-    
+    long long v = 123;
+    sds s = sdsfromlonglong(v);
+    printf("%llu", strlen(s));
     getchar();
     return 0;
 }

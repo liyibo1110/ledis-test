@@ -29,6 +29,8 @@
     "clang.completion.enable": false,
     "files.associations": {
         "string.h": "c",
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "redis.h": "c",
+        "sds.h": "c"
     } // 效果稍好，但太卡，故关掉
 }

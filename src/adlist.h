@@ -34,6 +34,16 @@ typedef struct list{
     int (*match)(void *ptr, void *key);
 } list;
 
+/**
+ * 定义函数宏
+ */ 
+#define listSetDupMethod(l,m) ((l)->dup = (m))
+#define listSetFreeMethod(l,m) ((l)->free = (m))
+#define listSetMatchMethod(l,m) ((l)->match = (m))
+#define listGetDupMethod(l) ((l)->dup)
+#define listGetFreeMethod(l) ((l)->free)
+#define listGetMatchMethod(l) ((l)->match)
+
 list *listCreate(void);
 void listRelease(list *list);
 list *listAddNodeHead(list *list, void *value);

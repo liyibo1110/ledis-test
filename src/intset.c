@@ -150,6 +150,36 @@ static intset *intsetUpgradeAndAdd(intset *is, int64_t value){
 }
 
 /**
+ * 将intset中指定的长度，从from移到to位置
+ * 注意from也可以大于to，这样就是往左整体移动了
+ * 所以函数名应该叫intsetMove更合适
+ */ 
+static void intsetMoveTail(intset *is, uint32_t from, uint32_t to){
+    //要移动的元素个数，例如一共3个，要从第2个开始移动（即3-1=2）最终要一起移动2个元素
+    uint32_t bytes = is->length - from;
+    uint32_t encoding = is->encoding;
+    void *src, *dest;
+    if(encoding == INTSET_ENC_INT64){
+        src = ((int64_t*)is->contents) + from;
+        dest = ((int64_t*)is->contents) + to;
+        bytes = bytes * sizeof(int64_t);
+    }else if(encoding == INTSET_ENC_INT32){
+        src = ((int32_t*)is->contents) + from;
+        dest = ((int32_t*)is->contents) + to;
+        bytes = bytes * sizeof(int32_t);
+    }else{
+        src = ((int16_t*)is->contents) + from;
+        dest = ((int16_t*)is->contents) + to;
+        bytes = bytes * sizeof(int16_t);
+    }
+    /**
+     * 最后要进行移动，注意是整体内容的移动（并不是一个元素一个元素移动）
+     * 注意使用了memmove而不是memcpy，前者会判断src、dest是否有重叠区域并处理
+     */ 
+    memmove(dest, src, bytes);
+}
+
+/**
  * 为整形集合分配内存，以及初始化字段
  * 注意数组没有初始化
  */ 
@@ -198,7 +228,66 @@ intset *intsetAdd(intset *is, int64_t value, int8_t *success){
     }
 }
 
+/**
+ * 删除一个元素，success来表示操作结果
+ * 为0则表示值不存在，为1表示删除成功
+ */ 
+intset *intsetRemove(intset *is, int64_t value, int8_t *success){
 
+    uint8_t encoding = _intsetValueEncoding(value);
+    uint32_t pos;
+    if(success){
+        //假定删除失败
+        *success = 0;
+    }
+
+    /**
+     * 如果encoding大于原始的encoding，说明肯定不存在，直接当做找不到
+     */ 
+    if((encoding <= is->encoding) && intsetSearch(is, value, &pos)){
+        //如果要删除元素不是最后一位，则直接把后面的所有数据前移1位，相当于是覆盖要删除的值
+        if(pos < is->length-1){
+            intsetMoveTail(is, pos+1, pos);
+        }
+        //重新调整空间
+        intsetResize(is, is->length-1);
+        is->length--;
+
+        if(success){ 
+            *success = 1;
+        }
+    }
+
+    return is;
+}
+
+/**
+ * 查找value在intset中是否存在
+ * 存在则返回1，否则返回0
+ */ 
+uint8_t intsetFind(intset *is, int64_t value){
+    uint8_t encoding = _intsetValueEncoding(value);
+    //encoding大于原intset的encoding说明一定不存在，然后再尝试查找
+    return encoding <= is->encoding && intsetSearch(is, value, NULL);
+}
+
+/**
+ * 随机返回intset里面的值
+ */ 
+int64_t intsetRandom(intset *is){
+    return _intsetGet(is, rand() % is->length);
+}
+
+uint32_t intsetLen(intset *is){
+    return is->length;
+}
+
+/**
+ * 返回一个intset的总大小（结构本身大小+所有数组元素的总大小）
+ */ 
+size_t intsetBlobLen(intset *is){
+    return (sizeof(intset)) + is->length * is->encoding;
+}
 
 int main(void){
     int a[5] = {1,2,3,4,5};
