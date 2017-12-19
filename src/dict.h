@@ -25,7 +25,7 @@ typedef struct dictEntry{
 
 typedef struct dictType{
     //计算hash的函数
-    size_t (*hashFunction)(const void *key);
+    unsigned int (*hashFunction)(const void *key);
     //复制key的函数
     void *(*keyDup)(void *privdata, const void *key);
     //复制val的函数
@@ -33,9 +33,9 @@ typedef struct dictType{
     //对比key的函数
     int (*keyCompare)(void *privdata, const void *key1, const void *key2);
     //销毁键的函数
-    void (*keyDestructor)(void *privdata, const void *key);
+    void (*keyDestructor)(void *privdata, void *key);
     //销毁值的函数
-    void (*valDestructor)(void *privdata, const void *obj);
+    void (*valDestructor)(void *privdata, void *obj);
 } dictType;
 
 typedef struct dictht{
@@ -148,6 +148,11 @@ dictIterator *dictGetIterator(dict *d);
 dictIterator *dictGetSafeIterator(dict *d);
 void dictReleaseIterator(dictIterator *iter);
 dictEntry *dictNext(dictIterator *iter);
+
+void dictSetHashFunctionSeed(unsigned int initval);
+unsigned int dictGetHashFunctionSeed(void);
+unsigned int dictGenHashFunction(const void *key, int len);
+unsigned int dictGenCaseHashFunction(const unsigned char *buf, int len);
 
 void dictEnableResize(void);
 void dictDisableResize(void);
