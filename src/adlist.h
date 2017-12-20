@@ -1,4 +1,5 @@
-#include <stdlib.h>
+#ifndef __ADLIST_H__
+#define __ADLIST_H__
 
 //双端链表节点
 typedef struct listNode{
@@ -24,7 +25,7 @@ typedef struct list{
     //尾节点指针
     listNode *tail;
     //链表节点总数
-    size_t len;
+    unsigned long len;
 
     //节点复制函数
     void *(*dup)(void *ptr);
@@ -63,3 +64,5 @@ void listRotate(list *list);
 
 #define AL_START_HEAD 0
 #define AL_START_TAIL 1
+
+#endif // !__ADLIST_H___

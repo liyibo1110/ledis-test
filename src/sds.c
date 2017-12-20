@@ -1,3 +1,7 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 #include "sds.h"
 
 /*
@@ -110,6 +114,13 @@ sds sdscatlen(sds s, const void *t, size_t len){
     sh->buf[oldlen + len] = '\0';
 
     return s;
+}
+
+/**
+ * 将sds对象的内容，追加到原有的s后面
+ */ 
+sds sdscatsds(sds s, const sds t){
+    return sdscatlen(s, t, sdslen(t));
 }
 
 sds sdscpy(sds s, const char *t){
@@ -321,10 +332,24 @@ sds sdsfromlonglong(long long value){
     return sdsnewlen(buf, len);
 }
 
+/**
+ * 将p字符串前后加入双引号，然后追加到s后面
+ * 暂时不处理原版的各种特殊字符
+ */ 
+sds sdscatrepr(sds s, const char *p, size_t len){
+    //先追加前面的引号
+    s = sdscatlen(s, "\"", 1);
+    s = sdscat(s, p);
+    s = sdscatlen(s, "\"", 1);
+    return s;
+}
+
 int main(){
-    long long v = 123;
-    sds s = sdsfromlonglong(v);
-    printf("%llu", strlen(s));
+    //long long v = 123;
+    //sds s = sdsfromlonglong(v);
+    //printf("%llu", strlen(s));
+    int result = (1 == 1);
+    printf("%d", result);
     getchar();
     return 0;
 }

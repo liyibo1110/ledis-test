@@ -1,8 +1,16 @@
-#include <sys/time.h>
+#ifndef __REDIS_H___
+#define __REDIS_H___
+
+#include <stdlib.h>
 #include "sds.h"
 #include "adlist.h"
 #include "dict.h"
 #include "intset.h"
+
+/**
+ * 定义当前软件版本
+ */ 
+#define REDIS_VERSION "1.0.0"
 
 /**
  * 定义全局操作结果代码
@@ -22,9 +30,11 @@
 #define REDIS_RUN_ID_SIZE 40
 #define REDIS_MAX_CLIENTS 10000 //最大支持10000个客户端
 #define REDIS_DEFAULT_DBNUM 16  //默认开启16个数据库
+#define REDIS_CONFIGLINE_MAX    1024    //最大配置项数
 #define REDIS_DEFAULT_DAEMONIZE 0
 #define REDIS_DEFAULT_TCP_KEEPALIVE 0
 #define REDIS_DEFAULT_LOGFILE ""    //默认log文件为空
+#define REDIS_MAX_LOGMSG_LEN 1024   //最长的log字节数为1k
 #define REDIS_DEFAULT_MAXMEMORY 0
 #define REDIS_DEFAULT_PID_FILE "/var/run/redis.pid" //默认进程pid文件
 
@@ -71,6 +81,14 @@
 #define REDIS_LRU_BITS 24
 #define REDIS_LRU_CLOCK_MAX ((1<<REDIS_LRU_BITS)-1) //24位全为1，即最大的24位数
 #define REDIS_LRU_CLOCK_RESOLUTION 1000
+
+/**
+ * debug相关宏函数
+ */ 
+//参数必须为真，否则提示assert错误并退出
+#define redisAssert(_e) ((_e)?(void)0:(_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
+//调用即说明出现error，提示错误并退出
+#define redisPanic(_e) _redisPanic(#_e,__FILE__,__LINE__),_exit(1)
 
 typedef struct redisObject{
     //类型
@@ -142,6 +160,9 @@ struct redisServer{
     int tcpkeepalive;   //如果不是0，则开启SO_KEEPALIVE
     int daemonize;  //是否为守护进程
 
+    /* 日志相关 */
+    char *logfile;  //log文件路径
+
     unsigned long long maxmemory;   //最大可用内存
 };
  
@@ -157,6 +178,14 @@ struct redisServer{
  */
 unsigned int getLRUClock(void);
 void populateCommandTable(void);
+//如果是gcc编译器，就使用编译安全版的附加功能
+#ifdef __GNUC__
+void redisLog(const char *fmt, ...)
+    __attribute__((format(printf, 1, 2)));
+#else
+void redisLog(const char *fmt, ...);
+#endif
+void redisLogRaw(const char *msg);
 
 /**
  * 所有命令函数原型
@@ -189,6 +218,12 @@ void freeZsetObject(robj *o);
 void freeHashObject(robj *o);
 
 /**
+ * 配置相关函数
+ */
+
+void loadServerConfig(char *filename, char *option);
+
+/**
  * 对外公开的数据
  */
 extern struct redisServer server;
@@ -200,3 +235,9 @@ extern dictType hashDictType;
 long long ustime(void);
 long long mstime(void);
 void getRandomHexChars(char *p, unsigned int len);
+/**
+ * debug相关函数
+ */
+void _redisAssert(char *estr, char *file, int line);
+void _redisPanic(char *msg, char *file, int line);
+#endif // !__REDIS_H___

@@ -1,3 +1,6 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <strings.h>
 #include "intset.h"
 /**
  * 暂时去掉了所有大小端的转换函数调用，假定系统只支持小端系统（linux或windows）

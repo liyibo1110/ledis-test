@@ -1,4 +1,8 @@
+#ifndef __REDIS_UTIL_H__
+#define __REDIS_UTIL_H__
+
 #include "sds.h"
-#include <stdio.h>
-#include <sys/time.h>
-#include <unistd.h>
+
+sds getAbsolutePath(char *filename);
+
+#endif // !__REDIS_UTIL_H___

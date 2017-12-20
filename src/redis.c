@@ -1,4 +1,9 @@
+#include <sys/time.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdarg.h>
 #include "redis.h"
+#include "util.h"
 
 /**
  * 全局变量
@@ -20,6 +25,9 @@ unsigned int getLRUClock(void){
 }
 
 /**
+ * 工具函数实现
+ */ 
+/**
  * 返回当前微秒级时间
  */ 
 long long ustime(void){
@@ -35,6 +43,37 @@ long long ustime(void){
  */ 
 long long mstime(void){
     return ustime() / 1000;
+}
+
+/**
+ * 低级API，将msg输出文件或者标准输出（根据配置）
+ */ 
+void redisLogRaw(const char *msg){
+    FILE *fp;
+    int log_to_stdout = (server.logfile[0] == '\0');
+    //要么输出文件里，要么输出stdout流
+    fp = log_to_stdout ? stdout : fopen(server.logfile, "a");
+    if(!fp){    //文件指针不存在直接返回
+        return;
+    }
+    fprintf(fp, "%s", msg);
+    fflush(fp);
+    if(!log_to_stdout){ //不是输出stdout还得关闭文件
+        fclose(fp);
+    }
+}
+
+/**
+ * 以printf的方式输出log，底层调用redisLogRaw函数
+ * 使用了可变参数宏
+ */ 
+void redisLog(const char *fmt, ...){
+    va_list ap; //声明可变参数容器
+    char msg[REDIS_MAX_LOGMSG_LEN];
+    va_start(ap, fmt);  //把可变参数搞进ap容器
+    vsnprintf(msg, sizeof(msg), fmt, ap);   //直接使用可变参数版的snprintf函数
+    va_end(ap); //还要清理ap容器
+    redisLogRaw(msg); //msg里面有值了，最终输出log
 }
 
 /**
@@ -111,6 +150,9 @@ void initServerConfig(){
     server.dbnum = REDIS_DEFAULT_DBNUM;
     server.maxidletime = REDIS_MAXIDLETIME;
     server.tcpkeepalive = REDIS_DEFAULT_TCP_KEEPALIVE;
+
+    server.logfile = strdup(REDIS_DEFAULT_LOGFILE);
+
     server.daemonize = REDIS_DEFAULT_DAEMONIZE;
      //将默认值复制了一份，注意strdup并不会free空间，但是这里只调用一次
     server.pidfile = strdup(REDIS_DEFAULT_PID_FILE);
@@ -121,6 +163,11 @@ void initServerConfig(){
     server.lruclock = getLRUClock();
 
     server.commands = dictCreate(&commandTableDictType, NULL);
+
+    //加载所有命令列表
+    populateCommandTable();
+
+    //还要加载5个命令
 }
 
 /**
@@ -150,9 +197,80 @@ void populateCommandTable(void){
             }
             f++;
         }
+        //最后将命令加到服务器命令字典
+        int result = dictAdd(server.commands, sdsnew(c->name), c);
+        redisAssert(result == DICT_OK);
     }
+}
+
+void version(){
+    printf("Redis server v=%s bits=%d\n", REDIS_VERSION, sizeof(long) == 8 ? 64 : 32);
+    exit(0);
+}
+
+void usage(){
+    fprintf(stdout, "Usage: ./redis-server [/path/to/redis.conf] [options]\n");
+    fprintf(stdout, "       ./redis-server - (read config from stdin)\n");
+    fprintf(stdout, "       ./redis-server -v or --version\n");
+    fprintf(stdout, "       ./redis-server -h or --help\n");
+    fprintf(stdout, "Examples:\n");
+    fprintf(stdout, "       ./redis-server (run the server with default conf)\n");
+    fprintf(stdout, "       ./redis-server /etc/redis/6379.conf\n");
+    fprintf(stdout, "       ./redis-server --port 7777\n");
+    exit(1);
 }
 
 int main(int argc, char *argv[]){
 
+    //初始化服务器
+    initServerConfig();
+
+    //检查输入参数
+    if(argc >= 2){
+        int i = 0;
+        sds options = sdsempty();
+        char *configfile = NULL;
+
+        //检测输入-v或--version
+        if(strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0){
+            version();
+        }
+        //检测输入-h或--help
+        if(strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0){
+            usage();
+        }
+
+        //猜测第一个参数是否为配置文件路径
+        if(argv[i][0] != '-' || argv[i][1] != '-'){
+            configfile = argv[i];
+            i++;
+        }
+
+        //循环加载后面的参数
+        while(i != argc){
+            if(argv[i][0] == '-' && argv[i][1] == '-'){
+                //参数名,例如--port
+                if(sdslen(options)){
+                    options = sdscat(options, "\n");    //在上次的最后追加换行符
+                    options = sdscat(options, argv[i] + 2);
+                    options = sdscat(options, " ");
+                }
+            }else{
+                //参数值，要前后加上双引号，最终形式例如port "1234"\n
+                options = sdscatrepr(options, argv[i], strlen(argv[i]));
+                options = sdscat(options, " ");
+            }
+            i++;
+        }
+
+        if(configfile){
+            //如果指定了配置文件，则要将文件全路径给server对象
+            server.configfile = getAbsolutePath(configfile);
+        }
+
+        //开始载入配置文件
+
+    }else{
+        redisLog("Warning: no config file specified, using the default config.");
+    }
 }

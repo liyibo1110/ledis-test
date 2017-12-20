@@ -1,10 +1,14 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
+#include <sys/time.h>
 #include "dict.h"
 
 //控制字典是否可以自动rehash
 static int dict_can_resize = 1;
 //当系统启动子进程，负载因子要达到5才可以rehash
 static unsigned int dict_force_resize_radio = 5;
-
 
 /**
  * 先声明private函数

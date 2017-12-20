@@ -1,3 +1,8 @@
+#ifndef __DICT_H__
+#define __DICT_H__
+
+#include <stdint.h>
+
 /*
  * 字典操作状态
  */
@@ -6,12 +11,7 @@
 //初始hash表总量
 #define DICT_HT_INITIAL_SIZE 4
 
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-#include <sys/time.h>
+
 
 typedef struct dictEntry{
     void *key;
@@ -156,3 +156,5 @@ unsigned int dictGenCaseHashFunction(const unsigned char *buf, int len);
 
 void dictEnableResize(void);
 void dictDisableResize(void);
+
+#endif // !__DICT_H___

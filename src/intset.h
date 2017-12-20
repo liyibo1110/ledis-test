@@ -1,7 +1,7 @@
-#include <stdio.h>
+#ifndef __INTSET_H__
+#define __INTSET_H__
+
 #include <stdint.h>
-#include <stdlib.h>
-#include <strings.h>
 
 typedef struct intset{
     uint32_t encoding;
@@ -16,3 +16,5 @@ uint8_t intsetFind(intset *is, int64_t value);
 int64_t intsetRandom(intset *is);
 uint32_t intsetLen(intset *is);
 size_t intsetBlobLen(intset *is);
+
+#endif // !__INTSET_H___

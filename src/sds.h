@@ -1,9 +1,9 @@
+#ifndef __SDS_H__
+#define __SDS_H__
+
 #define SDS_MAX_PREALLOC (1024*1024)    //最大预分配长度为1M
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
+#include <sys/types.h>
 
 /**
  * 给自定义字符串对象起个类型别名
@@ -29,6 +29,7 @@ sds sdsdup(const sds s);
 void sdsclear(sds s);
 sds sdscat(sds s, const char *t);
 sds sdscatlen(sds s, const void *t, size_t len);
+sds sdscatsds(sds s, const sds t);
 sds sdscpy(sds s, const char *t);
 sds sdscpylen(sds s, const char *t, size_t len);
 int sdscmp(const sds s1, const sds s2);
@@ -38,8 +39,12 @@ void sdstolower(sds s);
 void sdstoupper(sds s);
 size_t sdsAllocSize(sds s);
 
+sds sdscatrepr(sds s, const char *p, size_t len);
+
 sds sdsfromlonglong(long long value);
 
 //**************底层API***************************//
 sds sdsMakeRoom(sds s, size_t addlen);
 sds sdsRemoveFreeSpace(sds s);
+
+#endif // !__SDS_H___
