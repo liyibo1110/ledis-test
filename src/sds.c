@@ -273,6 +273,204 @@ void sdstoupper(sds s){
     }
 }
 
+/**
+ * 就是split函数，分隔字符可以是1个，也支持多字符，注意返回的sds数组需要调用者自己清理
+ */ 
+sds *sdssplitlen(const char *s, int len, const char *sep, int seplen, int *count){
+    int elements = 0; //token的下标
+    int slots = 5;  //token的初始总数（相当于动态数组）
+    int start = 0;  //每一轮截取后，新的字符起点索引位置
+    sds *tokens;
+
+    if(seplen < 1 || len < 0){
+        return NULL;
+    }
+
+    tokens = malloc(sizeof(sds) * slots);
+
+    if(len == 0){
+        *count = 0;
+        return tokens;
+    }
+
+    //如果分隔字符为1个，就尝试判断每个字符，如果是2个，最后1个字符就不需要判断了，因为肯定不是，以此类推
+    for (int i = 0; i < (len - (seplen - 1)); i++){
+        //每次都要先尝试扩展空间
+        if(slots < elements + 2){
+            slots *= 2; //位置翻倍
+            sds *newTokens = realloc(tokens, sizeof(sds) * slots);
+            if(newTokens == NULL){
+                goto cleanup;
+            }
+            //这里考虑到realloc的特性，返回的指针不一定是同一个，旧的tokens可能已被隐式free，所以安全做法就是再次赋值
+            tokens = newTokens;
+        }
+
+        //开始查找是否为分隔字符，也是2种情况，有可能是单字符或者多字符，要分别判断2次
+        if((seplen == 1 && *(s+i) == sep[0]) || memcmp(s+i, sep, seplen) == 0){
+            //如果找到，则从start开始截取，总截取i-start个字符
+            tokens[elements] = sdsnewlen(s+start, i-start);
+            if(tokens[elements] == NULL){
+                goto cleanup;
+            }
+            elements++; //token下标+1
+            start = i + seplen; //start位置放到找到的分隔字符后面的第一个字符
+            i = i + seplen - 1; //对于多字符分隔符，则直接跳过后面分隔符。
+        }
+        //扫描一轮后，还要把最后一段字符也算作新的分组
+        tokens[elements] = sdsnewlen(s+start, i-start);
+        if(tokens[elements] == NULL){
+            goto cleanup;
+        }
+        *count = (++elements);  //最终count为索引数+1
+        return tokens;
+    }
+
+    //如果操作失败，统一在这里释放字符串数组资源
+    cleanup : {
+        for (int i = 0; i < elements; i++){
+            //逐一清理每个字符串
+            free(tokens[i]);
+        }
+        //最后清理数组本身
+        free(tokens);
+        *count = 0;
+        return NULL;
+    }
+}
+
+/**
+ * 将一行配置，解析成字符串数组
+ * 可以处理值被单引号或者双引号包围的情况
+ * argc为最终数组的长度
+ */ 
+sds *sdssplitargs(const char *line, int *argc) {
+    const char *p = line;
+    char *current = NULL;
+    char **vector = NULL;
+
+    *argc = 0;
+    while(1) {
+
+        /* skip blanks */
+        // 跳过空白
+        // T = O(N)
+        while(*p && isspace(*p)) p++;
+
+        if (*p) {
+            /* get a token */
+            int inq=0;  /* set to 1 if we are in "quotes" */
+            int insq=0; /* set to 1 if we are in 'single quotes' */
+            int done=0;
+
+            if (current == NULL) current = sdsempty();
+
+            // T = O(N)
+            while(!done) {
+                if (inq) {
+                    if (*p == '\\' && *(p+1) == 'x' &&
+                                             is_hex_digit(*(p+2)) &&
+                                             is_hex_digit(*(p+3)))
+                    {
+                        unsigned char byte;
+
+                        byte = (hex_digit_to_int(*(p+2))*16)+
+                                hex_digit_to_int(*(p+3));
+                        current = sdscatlen(current,(char*)&byte,1);
+                        p += 3;
+                    } else if (*p == '\\' && *(p+1)) {
+                        char c;
+
+                        p++;
+                        switch(*p) {
+                        case 'n': c = '\n'; break;
+                        case 'r': c = '\r'; break;
+                        case 't': c = '\t'; break;
+                        case 'b': c = '\b'; break;
+                        case 'a': c = '\a'; break;
+                        default: c = *p; break;
+                        }
+                        current = sdscatlen(current,&c,1);
+                    } else if (*p == '"') {
+                        /* closing quote must be followed by a space or
+                         * nothing at all. */
+                        if (*(p+1) && !isspace(*(p+1))) goto err;
+                        done=1;
+                    } else if (!*p) {
+                        /* unterminated quotes */
+                        goto err;
+                    } else {
+                        current = sdscatlen(current,p,1);
+                    }
+                } else if (insq) {
+                    if (*p == '\\' && *(p+1) == '\'') {
+                        p++;
+                        current = sdscatlen(current,"'",1);
+                    } else if (*p == '\'') {
+                        /* closing quote must be followed by a space or
+                         * nothing at all. */
+                        if (*(p+1) && !isspace(*(p+1))) goto err;
+                        done=1;
+                    } else if (!*p) {
+                        /* unterminated quotes */
+                        goto err;
+                    } else {
+                        current = sdscatlen(current,p,1);
+                    }
+                } else {
+                    switch(*p) {
+                    case ' ':
+                    case '\n':
+                    case '\r':
+                    case '\t':
+                    case '\0':
+                        done=1;
+                        break;
+                    case '"':
+                        inq=1;
+                        break;
+                    case '\'':
+                        insq=1;
+                        break;
+                    default:
+                        current = sdscatlen(current,p,1);
+                        break;
+                    }
+                }
+                if (*p) p++;
+            }
+            /* add the token to the vector */
+            // T = O(N)
+            vector = zrealloc(vector,((*argc)+1)*sizeof(char*));
+            vector[*argc] = current;
+            (*argc)++;
+            current = NULL;
+        } else {
+            /* Even on empty input string return something not NULL. */
+            if (vector == NULL) vector = zmalloc(sizeof(void*));
+            return vector;
+        }
+    }
+
+err:
+    while((*argc)--)
+        sdsfree(vector[*argc]);
+    zfree(vector);
+    if (current) sdsfree(current);
+    *argc = 0;
+    return NULL;
+}
+
+void sdsfreesplitres(sds *token, int count){
+    if(!token){ //如果数组为NULL（未分配空间），则不处理
+        return;
+    }
+    while(count--){ //先倒着释放每一个元素
+        sdsfree(token[count]);
+    }
+    free(token);    //最后释放数组本身
+}
+
 /*
  * 返回sds全部已分配的内存字节数
  * 1.指针本身的长度

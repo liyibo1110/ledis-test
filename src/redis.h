@@ -1,6 +1,7 @@
 #ifndef __REDIS_H___
 #define __REDIS_H___
 
+#include <stdio.h>
 #include <stdlib.h>
 #include "sds.h"
 #include "adlist.h"

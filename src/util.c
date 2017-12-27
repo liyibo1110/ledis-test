@@ -2,6 +2,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include "util.h"
 
 /* Generate the Redis "Run ID", a SHA1-sized random number that identifies a
@@ -48,6 +49,53 @@ void getRandomHexChars(char *p, unsigned int len) {
     for (j = 0; j < len; j++)
         p[j] = charset[p[j] & 0x0F];
     if (fp) fclose(fp);
+}
+
+/* Convert a string representing an amount of memory into the number of
+ * bytes, so for instance memtoll("1Gi") will return 1073741824 that is
+ * (1024*1024*1024).
+ *
+ * On parsing error, if *err is not NULL, it's set to 1, otherwise it's
+ * set to 0 */
+long long memtoll(const char *p, int *err) {
+    const char *u;
+    char buf[128];
+    long mul; /* unit multiplier */
+    long long val;
+    unsigned int digits;
+
+    if (err) *err = 0;
+    /* Search the first non digit character. */
+    u = p;
+    if (*u == '-') u++;
+    while(*u && isdigit(*u)) u++;
+    if (*u == '\0' || !strcasecmp(u,"b")) {
+        mul = 1;
+    } else if (!strcasecmp(u,"k")) {
+        mul = 1000;
+    } else if (!strcasecmp(u,"kb")) {
+        mul = 1024;
+    } else if (!strcasecmp(u,"m")) {
+        mul = 1000*1000;
+    } else if (!strcasecmp(u,"mb")) {
+        mul = 1024*1024;
+    } else if (!strcasecmp(u,"g")) {
+        mul = 1000L*1000*1000;
+    } else if (!strcasecmp(u,"gb")) {
+        mul = 1024L*1024*1024;
+    } else {
+        if (err) *err = 1;
+        mul = 1;
+    }
+    digits = u-p;
+    if (digits >= sizeof(buf)) {
+        if (err) *err = 1;
+        return LLONG_MAX;
+    }
+    memcpy(buf,p,digits);
+    buf[digits] = '\0';
+    val = strtoll(buf,NULL,10);
+    return val*mul;
 }
 
 /* Given the filename, return the absolute path as an SDS string, or NULL

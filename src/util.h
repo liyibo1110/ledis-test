@@ -4,5 +4,5 @@
 #include "sds.h"
 
 sds getAbsolutePath(char *filename);
-
+long long memtoll(const char *p, int *err);
 #endif // !__REDIS_UTIL_H___

@@ -37,6 +37,9 @@ sds sdstrim(sds s, const char *cset);
 void sdsrange(sds s, int start, int end);
 void sdstolower(sds s);
 void sdstoupper(sds s);
+sds *sdssplitlen(const char *s, int len, const char *sep, int seplen, int *count);
+sds *sdssplitargs(const char *line, int *argc);
+void sdsfreesplitres(sds *token, int count);
 size_t sdsAllocSize(sds s);
 
 sds sdscatrepr(sds s, const char *p, size_t len);
